@@ -1,0 +1,119 @@
+-- Select data that we are going to be using
+SELECT LOCATION, DATE, TOTAL_CASES,
+	NEW_CASES,
+	TOTAL_DEATHS,
+	POPULATION
+FROM PUBLIC.COVIDDEATHS
+ORDER BY 1, 2 
+
+-- Looking at Total Cases vs Total Deaths
+-- Shows the likelihood of dying if you contract covid in your country
+SELECT LOCATION, DATE, TOTAL_CASES,
+	TOTAL_DEATHS,
+	(TOTAL_DEATHS / TOTAL_CASES) * 100 AS DEATH_PERCENTAGE
+FROM PUBLIC.COVIDDEATHS
+WHERE LOCATION LIKE '%States%'
+ORDER BY 1,2 
+
+-- Looking at Total Cases vs Population
+-- Shows what percentage of population got covid
+SELECT LOCATION, DATE, TOTAL_CASES,
+	POPULATION,
+	(TOTAL_CASES / POPULATION) * 100 AS INFECTION_PERCENTAGE
+FROM PUBLIC.COVIDDEATHS
+WHERE LOCATION LIKE '%States%'
+ORDER BY 1,2
+
+-- Looking at Countries with highest Infection Rate to Population
+SELECT LOCATION, POPULATION, MAX(TOTAL_CASES) AS highest_infection_count,
+	MAX(TOTAL_CASES / POPULATION) * 100 AS INFECTION_PERCENTAGE
+FROM PUBLIC.COVIDDEATHS
+GROUP BY LOCATION, POPULATION
+ORDER BY INFECTION_PERCENTAGE DESC
+
+-- Showing the Countries with Highest Death Count per Population
+SELECT LOCATION, MAX(TOTAL_DEATHS) AS total_death_count
+FROM PUBLIC.COVIDDEATHS
+WHERE CONTINENT is not null
+GROUP BY LOCATION
+ORDER BY total_death_count DESC
+
+-- Showint continents with the highest Deat Count
+SELECT continent, MAX(TOTAL_DEATHS) AS total_death_count
+FROM PUBLIC.COVIDDEATHS
+WHERE CONTINENT is not null
+GROUP BY continent
+ORDER BY total_death_count DESC
+
+-- Global Numbers
+SELECT SUM(new_cases) AS total_cases, SUM(new_deaths) AS total_deaths, SUM(new_deaths)/SUM(new_cases)*100 AS death_percentage
+FROM PUBLIC.COVIDDEATHS
+WHERE continent is not null
+--GROUP BY date
+ORDER BY 1,2 
+
+-- Looking at Total Population vs Vaccinations
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations,
+    SUM(vac.new_vaccinations) OVER (Partition by dea.location ORDER BY dea.location, dea.date) as rolling_sum_vaccinated
+FROM PUBLIC.COVIDDEATHS dea
+JOIN PUBLIC.COVIDVACCINATIONS vac
+ON dea.location = vac.location
+AND dea.date = vac.date
+WHERE dea.continent is not null
+ORDER BY 2,3
+
+-- USE CTE
+WITH PopvsVac (continent, location, date, population, new_vaccinations, rolling_sum_vaccinated)
+AS (
+    SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations,
+        SUM(vac.new_vaccinations) OVER (Partition by dea.location ORDER BY dea.location, dea.date) as rolling_sum_vaccinated
+    FROM PUBLIC.COVIDDEATHS dea
+    JOIN PUBLIC.COVIDVACCINATIONS vac
+        ON dea.location = vac.location
+        AND dea.date = vac.date
+    WHERE dea.continent is not null
+    --ORDER BY 2,3
+)
+SELECT *, (rolling_sum_vaccinated/population)*100
+FROM PopvsVac
+--WHERE location = 'Albania'
+
+-- USE TEMP TABLE
+DROP TABLE if EXISTS PercentPopulationVaccinated;
+
+CREATE TABLE PercentPopulationVaccinated(
+    continent varchar(255),
+    location varchar(255),
+    date date,
+    population real,
+    new_vaccinations real,
+    rolling_people_vaccinated real);
+
+INSERT INTO PercentPopulationVaccinated
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations,
+    SUM(vac.new_vaccinations) OVER (Partition by dea.location ORDER BY dea.location, dea.date) as rolling_sum_vaccinated
+    FROM PUBLIC.COVIDDEATHS dea
+    JOIN PUBLIC.COVIDVACCINATIONS vac
+        ON dea.location = vac.location
+        AND dea.date = vac.date
+    WHERE dea.continent is not null;
+
+SELECT *, (rolling_people_vaccinated/population)*100
+FROM PercentPopulationVaccinated;
+
+
+-- Creating View to store data for later visualizations
+CREATE VIEW PercentPopulationVaccinated_view AS
+SELECT dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations,
+    SUM(vac.new_vaccinations) OVER (Partition by dea.location ORDER BY dea.location, dea.date) as rolling_sum_vaccinated
+    FROM PUBLIC.COVIDDEATHS dea
+    JOIN PUBLIC.COVIDVACCINATIONS vac
+        ON dea.location = vac.location
+        AND dea.date = vac.date
+    WHERE dea.continent is not null;
+    --ORDER BY 2,3;
+
+
+
+
+
